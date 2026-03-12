@@ -1,0 +1,13 @@
+{
+  "vkUiBaseUrl": "http://127.0.0.1:3001",
+  "defaultProjectId": "<your-project-id>",
+  "repoBindings": [
+    {
+      "targetBranch": "main",
+      "workspacePath": "C:\\path\\to\\your\\workspace",
+      "repoId": "<your-repo-id>"
+    }
+  ],
+  "vkApiBaseUrl": "http://127.0.0.1:3001",
+  "defaultExecutorProfileId": "CLAUDE_CODE"
+}

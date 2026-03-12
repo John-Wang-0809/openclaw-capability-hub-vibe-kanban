@@ -1,0 +1,10 @@
+﻿{
+  "detailed": {
+    "failed": "[M3][FAILED] {{task_title}}\nstatus: {{status}}\nproject: {{project_id}}\ntask: {{task_url}}\nattempt: {{attempt_url}}\nerror: {{error_summary}}\nnext: {{next_step}}\nevent_id: {{event_id}}",
+    "done": "[M3][DONE] {{task_title}}\nstatus: {{status}}\nproject: {{project_id}}\ntask: {{task_url}}\nattempt: {{attempt_url}}\nevent_id: {{event_id}}"
+  },
+  "brief": {
+    "failed": "[FAILED] {{task_title}} | {{task_url}}",
+    "done": "[DONE] {{task_title}} | {{task_url}}"
+  }
+}

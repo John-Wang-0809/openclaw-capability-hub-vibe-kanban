@@ -1,0 +1,17 @@
+﻿{
+  "project_id": "<your-project-id>",
+  "notify_statuses": ["failed", "done"],
+  "detail_level": "detailed",
+  "severity_by_status": {
+    "failed": "high",
+    "done": "info"
+  },
+  "delivery": {
+    "console": true,
+    "file": true,
+    "openclaw_dialog": true,
+    "openclaw_session_key": "main",
+    "retry_interval_sec": 20,
+    "max_retries": 3
+  }
+}

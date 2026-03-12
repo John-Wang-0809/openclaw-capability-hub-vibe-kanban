@@ -1,0 +1,26 @@
+{
+  "source_artifact": "capability-hub/m5-verify-report-tool.json",
+  "curation": "sanitized_selected_fields",
+  "timestamp": "2026-03-10T20:27:38.2532597Z",
+  "mode": "tool",
+  "decision_path": "tool_direct",
+  "ask_tool_registered": true,
+  "dispatch_tool_registered": true,
+  "tasks_created": 2,
+  "attempts_observed": 1,
+  "overall_ok": true,
+  "selected_dispatch_observations": {
+    "subtasks_created": 2,
+    "assist_task_created": true,
+    "warnings": [
+      "prefix contract: /plan2vk",
+      "parent workspace id not found yet; child tasks created without parent_workspace_id"
+    ]
+  },
+  "redactions": [
+    "absolute filesystem paths",
+    "task identifiers",
+    "project and repository identifiers",
+    "dashboard links"
+  ]
+}

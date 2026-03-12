@@ -1,0 +1,14 @@
+[
+  {
+    "title": "Repo quick scan",
+    "description": "Scan the repo and list top-level packages/modules, entrypoints, and build commands."
+  },
+  {
+    "title": "Architecture sketch",
+    "description": "Produce a brief architecture overview (components + data flow) and point to key files."
+  },
+  {
+    "title": "Risk & security notes",
+    "description": "Identify potential security and operational risks, plus quick mitigation suggestions."
+  }
+]

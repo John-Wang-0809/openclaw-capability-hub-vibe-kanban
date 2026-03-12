@@ -1,0 +1,44 @@
+﻿{
+  "version": "1",
+  "default_action": "allow",
+  "rules": [
+    {
+      "id": "m4-file-delete",
+      "operation": "file_delete",
+      "require_approval": true,
+      "severity": "high",
+      "question_template": "Approve operation {operation} on target {target}? Reason: {reason}",
+      "choices": ["approve", "reject"],
+      "default_choice": "reject",
+      "timeout_seconds": 300,
+      "notes": "Sensitive file deletion should be human-approved."
+    },
+    {
+      "id": "m4-production-deploy",
+      "operation": "production_deploy",
+      "require_approval": true,
+      "severity": "high",
+      "question_template": "Approve operation {operation} to target {target}? Reason: {reason}",
+      "choices": ["approve", "reject"],
+      "default_choice": "reject",
+      "timeout_seconds": 300,
+      "notes": "Production deployment requires explicit confirmation."
+    },
+    {
+      "id": "m4-external-api-write",
+      "operation": "external_api_write",
+      "require_approval": true,
+      "severity": "medium",
+      "question_template": "Approve operation {operation} for target {target}? Reason: {reason}",
+      "choices": ["approve", "reject"],
+      "default_choice": "reject",
+      "timeout_seconds": 300,
+      "notes": "External side effects must be reviewed."
+    }
+  ],
+  "auto_approve": {
+    "enabled": false,
+    "decision": "reject",
+    "only_operations": []
+  }
+}

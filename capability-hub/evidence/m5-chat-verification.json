@@ -1,0 +1,38 @@
+{
+  "source_artifact": "capability-hub/m5-verify-report-e2e.json",
+  "curation": "sanitized_selected_fields",
+  "timestamp": "2026-03-10T21:17:07.4268952Z",
+  "mode": "e2e",
+  "decision_path": "openclaw_skill_command",
+  "ask_tool_registered": true,
+  "dispatch_tool_registered": true,
+  "tasks_created": 1,
+  "attempts_observed": 1,
+  "overall_ok": true,
+  "selected_runtime_observations": {
+    "runtime_mode": "auto",
+    "config_source": "windows",
+    "skill_exists": true,
+    "skill_listed": true,
+    "skill_dispatch_found": true,
+    "skill_exec_fallback_found": true,
+    "contract_mode": "fallback_note",
+    "registered_tools": [
+      "cap.ask_user",
+      "cap.fetch_doc",
+      "cap.memory_search",
+      "cap.vk_plan_and_dispatch",
+      "cap.web_search",
+      "cap.web_snapshot"
+    ],
+    "chat_trigger_exit_code": 0,
+    "chat_duration_ms": 54918
+  },
+  "redactions": [
+    "absolute filesystem paths",
+    "session identifiers",
+    "task identifiers",
+    "dashboard links",
+    "workspace bootstrap path details"
+  ]
+}

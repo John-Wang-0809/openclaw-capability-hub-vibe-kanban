@@ -1,0 +1,66 @@
+# Public curated monorepo boundary
+/*
+!/.gitignore
+!/README.md
+!/PRODUCT_ARCHITECTURE_DEEP_DIVE.md
+!/LICENSE
+!/CONTRIBUTING.md
+!/SECURITY.md
+!/THIRD_PARTY.md
+!/capability-hub/
+!/test/
+
+# Curated capability-hub subset
+capability-hub/*
+!capability-hub/README.md
+!capability-hub/package.json
+!capability-hub/package-lock.json
+!capability-hub/vk-bindings.json
+!capability-hub/src/
+!capability-hub/src/**
+!capability-hub/config/
+!capability-hub/config/**
+!capability-hub/scripts/
+capability-hub/scripts/*
+!capability-hub/scripts/check-m5-openclaw-contract.ps1
+!capability-hub/scripts/m5-dispatch-client.js
+!capability-hub/scripts/openclaw-env.ps1
+!capability-hub/scripts/resolve-openclaw-config.ps1
+!capability-hub/scripts/run-openclaw-user-flow.ps1
+!capability-hub/scripts/self-test.js
+!capability-hub/scripts/start-openclaw-vk-stack.ps1
+!capability-hub/scripts/stop-openclaw-vk-stack.ps1
+!capability-hub/scripts/verify-m5-dispatch.ps1
+!capability-hub/scripts/vk-inject-mcp.ps1
+!capability-hub/evidence/
+!capability-hub/evidence/**
+
+# Local-only capability-hub files
+capability-hub/vk-bindings.local.json
+capability-hub/vibe-kanban.mcp-servers.json
+
+# Curated test subset
+test/*
+!test/README.md
+!test/multi-agent-dispatch.mjs
+!test/subtasks.json
+
+# Generated content if recreated later
+**/node_modules/
+**/dist/
+**/target/
+**/.cache/
+**/logs/
+**/reports/
+**/*.log
+**/*.jsonl
+capability-hub/m1-verify-report.json
+capability-hub/m2-*.json
+capability-hub/m3-*.json
+capability-hub/m4-verify-report*.json
+capability-hub/m5-dispatch-state.json
+capability-hub/m5-verify-report*.json
+capability-hub/plan2vk-subtasks.json
+capability-hub/stack-processes.json
+capability-hub/tmp*.json
+capability-hub/x*.json

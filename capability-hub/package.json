@@ -1,0 +1,24 @@
+{
+  "name": "openclaw-capability-hub",
+  "version": "0.1.0",
+  "description": "OpenClaw Capability Hub (Capability Proxy) exposed as a stdio MCP server",
+  "type": "module",
+  "private": true,
+  "bin": {
+    "openclaw-capability-hub": "./src/openclaw-capability-hub.js"
+  },
+  "scripts": {
+    "start": "node ./src/openclaw-capability-hub.js",
+    "self-test": "node ./scripts/self-test.js",
+    "verify:m5:skill": "powershell -NoProfile -ExecutionPolicy Bypass -File .\\scripts\\check-m5-openclaw-contract.ps1",
+    "verify:m5:tool": "powershell -NoProfile -ExecutionPolicy Bypass -File .\\scripts\\verify-m5-dispatch.ps1 -Mode tool -OutputPath .\\m5-verify-report-tool.json",
+    "verify:m5:e2e": "powershell -NoProfile -ExecutionPolicy Bypass -File .\\scripts\\verify-m5-dispatch.ps1 -Mode e2e -OutputPath .\\m5-verify-report-e2e.json"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.25.3",
+    "zod": "^4.3.6"
+  }
+}

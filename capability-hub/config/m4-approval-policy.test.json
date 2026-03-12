@@ -1,0 +1,41 @@
+﻿{
+  "version": "1",
+  "default_action": "allow",
+  "rules": [
+    {
+      "id": "m4-file-delete-test",
+      "operation": "file_delete",
+      "require_approval": true,
+      "severity": "high",
+      "question_template": "Approve operation {operation} on target {target}? Reason: {reason}",
+      "choices": ["approve", "reject"],
+      "default_choice": "reject",
+      "timeout_seconds": 60
+    },
+    {
+      "id": "m4-production-deploy-test",
+      "operation": "production_deploy",
+      "require_approval": true,
+      "severity": "high",
+      "question_template": "Approve operation {operation} to target {target}? Reason: {reason}",
+      "choices": ["approve", "reject"],
+      "default_choice": "reject",
+      "timeout_seconds": 60
+    },
+    {
+      "id": "m4-external-api-write-test",
+      "operation": "external_api_write",
+      "require_approval": true,
+      "severity": "medium",
+      "question_template": "Approve operation {operation} for target {target}? Reason: {reason}",
+      "choices": ["approve", "reject"],
+      "default_choice": "reject",
+      "timeout_seconds": 60
+    }
+  ],
+  "auto_approve": {
+    "enabled": true,
+    "decision": "approve",
+    "only_operations": ["file_delete", "production_deploy", "external_api_write"]
+  }
+}

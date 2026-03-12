@@ -1,0 +1,31 @@
+{
+  "source_artifacts": [
+    "capability-hub/scripts/m5-dispatch-client.js",
+    "capability-hub/m5-dispatch-log.jsonl",
+    "capability-hub/m5-dispatch-state.json"
+  ],
+  "curation": "sanitized_selected_fields",
+  "timeout_contract": {
+    "default_timeout_ms": 300000,
+    "minimum_timeout_ms": 1000,
+    "environment_override": "M5_DISPATCH_TIMEOUT_MS",
+    "old_sdk_boundary_ms": 60000
+  },
+  "selected_large_batch_dispatch": {
+    "timestamp": "2026-03-12T07:35:22.162Z",
+    "idempotency_key_label": "codex-timeout-fix-20260312",
+    "subtasks_created": 10,
+    "assist_task_created": true,
+    "ok": true,
+    "warnings": [
+      "prefix contract: /plan2vk",
+      "parent workspace id not found yet; child tasks created without parent_workspace_id"
+    ]
+  },
+  "interpretation": "This selected evidence proves that the hardened fallback client contract shipped with a 300000 ms timeout and that a large-batch fallback dispatch completed successfully after the timeout-hardening change. Raw environment-specific timing traces are intentionally not part of the public repository.",
+  "redactions": [
+    "task identifiers",
+    "project and repository identifiers",
+    "dashboard links"
+  ]
+}

@@ -1,0 +1,24 @@
+{
+  "prefix": "/plan2vk",
+  "routing_rules": [
+    {
+      "id": "code_impl",
+      "pattern": "(修复|bug|debug|脚本|测试|CI|实现|编码|代码)",
+      "executor": "CODEX"
+    },
+    {
+      "id": "design_docs",
+      "pattern": "(方案|架构|重构|文档|规范|计划|分析)",
+      "executor": "CLAUDE_CODE"
+    }
+  ],
+  "default_executor_from": "vk-bindings.defaultExecutorProfileId",
+  "subtask_limits": {
+    "min": 1,
+    "max": 10
+  },
+  "assist": {
+    "enabled": true,
+    "executor": "CODEX"
+  }
+}
