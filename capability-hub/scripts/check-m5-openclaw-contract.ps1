@@ -26,6 +26,44 @@ $ErrorActionPreference = "Stop"
 $scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 . (Join-Path $scriptDir "resolve-openclaw-config.ps1")
 
+function Get-OptionalCommand([string]$Name) {
+  try {
+    $commands = @(Get-Command $Name -All -ErrorAction Stop)
+    if ($commands.Count -gt 0) {
+      return $commands[0]
+    }
+  } catch {
+    # ignore
+  }
+  return $null
+}
+
+function Test-WslCommandAvailable([string]$Name) {
+  $output = $null
+  try {
+    $output = wsl -e sh -c "command -v $Name 2>/dev/null" 2>$null | Out-String
+  } catch {
+    # ignore
+  }
+  return (-not [string]::IsNullOrWhiteSpace(([string]$output).Trim()))
+}
+
+function Invoke-OpenClawCli([string[]]$Arguments, [ValidateSet("windows", "wsl")] [string]$Mode) {
+  if ($Mode -eq "wsl") {
+    $output = wsl -e openclaw @Arguments 2>&1 | Out-String
+    return [pscustomobject]@{
+      exit_code = $LASTEXITCODE
+      output = [string]$output
+    }
+  }
+
+  $output = & openclaw @Arguments 2>&1 | Out-String
+  return [pscustomobject]@{
+    exit_code = $LASTEXITCODE
+    output = [string]$output
+  }
+}
+
 function Get-DefaultWslDistro {
   try {
     $raw = wsl -l -q 2>$null
@@ -132,7 +170,31 @@ function Resolve-ConfigForRuntime([string]$RuntimeMode, [string]$ManualPath) {
   }
 }
 
+function Resolve-OpenClawCommandMode([object]$ResolvedInfo, [string]$RuntimeMode) {
+  $windowsCommand = Get-OptionalCommand "openclaw"
+  $wslAvailable = Test-WslCommandAvailable "openclaw"
+
+  if ($RuntimeMode -eq "windows") {
+    if (-not $windowsCommand) { throw "Windows OpenClaw CLI is not available." }
+    return "windows"
+  }
+
+  if ($RuntimeMode -eq "wsl") {
+    if (-not $wslAvailable) { throw "WSL OpenClaw CLI is not available." }
+    return "wsl"
+  }
+
+  $platform = [string]$ResolvedInfo.runtime_platform
+  if ($platform.ToLower().Contains("linux") -and $wslAvailable) { return "wsl" }
+  if (([string]$ResolvedInfo.source).StartsWith("wsl") -and $wslAvailable) { return "wsl" }
+  if ($windowsCommand) { return "windows" }
+  if ($wslAvailable) { return "wsl" }
+
+  throw "No usable OpenClaw CLI was found on Windows or WSL."
+}
+
 $resolvedInfo = Resolve-ConfigForRuntime -RuntimeMode $Runtime -ManualPath $ConfigPath
+$openclawCommandMode = Resolve-OpenClawCommandMode -ResolvedInfo $resolvedInfo -RuntimeMode $Runtime
 $cfg = Parse-OpenClawConfig -ResolvedPath $resolvedInfo.path
 
 $workspaceRaw = ""
@@ -173,8 +235,9 @@ $skillsListOutput = ""
 $skillsListCommandOk = $false
 $skillListed = $false
 try {
-  $skillsListOutput = (& openclaw skills list 2>&1 | Out-String)
-  $skillsListCommandOk = ($LASTEXITCODE -eq 0)
+  $skillsListResult = Invoke-OpenClawCli -Arguments @("skills", "list") -Mode $openclawCommandMode
+  $skillsListOutput = $skillsListResult.output
+  $skillsListCommandOk = ($skillsListResult.exit_code -eq 0)
   if ($skillsListCommandOk) {
     $skillListed = $skillsListOutput -match ("(?im)\b" + [regex]::Escape($SkillName) + "\b")
   }
@@ -201,6 +264,7 @@ $result = [ordered]@{
   runtime_platform = [string]$resolvedInfo.runtime_platform
   config_path = [string]$resolvedInfo.path
   config_source = [string]$resolvedInfo.source
+  openclaw_command_mode = $openclawCommandMode
   windows_config_path = [string]$resolvedInfo.windows_path
   wsl_config_path = [string]$resolvedInfo.wsl_path
   workspace_raw = $workspaceRaw

@@ -4,12 +4,13 @@
  *  - `resolve-openclaw-config.ps1` for gateway token resolution across Windows and WSL
  *  - Local `openclaw`, `node`, `npx`, and optional WSL runtime availability
  * [OUT] Outputs:
+ *  - Performs fail-fast preflight checks for the selected startup path and prints actionable install guidance when required prerequisites are missing
  *  - Starts or reuses the OpenClaw gateway, vibe-kanban API, and Capability Hub process
  *  - Injects the Capability Hub MCP server into vibe-kanban for the selected executors
  *  - Writes stack state to `stack-processes.json` and prints stack health plus the Control UI URL
  * [POS] Position in the system:
  *  - Orchestrates local stack startup and MCP wiring for OpenClaw + vibe-kanban
- *  - Does not implement MCP server behavior or vibe-kanban task execution itself
+ *  - Does not implement MCP server behavior or vibe-kanban task execution itself, and does not continue partial startup after a failed preflight
  *
  * Change warning: once you modify this file’s logic, you must update this comment block,
  * and check/update the module doc (README/CLAUDE) in the containing folder; update the root
@@ -95,6 +96,79 @@ function Test-Http([string]$Url, [int]$TimeoutSec = 2) {
   }
 }
 
+function Get-OptionalCommand([string]$Name) {
+  try {
+    $commands = @(Get-Command $Name -All -ErrorAction Stop)
+    if ($commands.Count -gt 0) {
+      return $commands[0]
+    }
+  } catch {
+    # ignore
+  }
+  return $null
+}
+
+function Test-WslCommandAvailable([string]$Name) {
+  $output = $null
+  try {
+    $output = wsl -e sh -c "command -v $Name 2>/dev/null" 2>$null | Out-String
+  } catch {
+    # ignore
+  }
+  return (-not [string]::IsNullOrWhiteSpace(([string]$output).Trim()))
+}
+
+function Resolve-OpenClawAvailability() {
+  $windowsCommand = Get-OptionalCommand "openclaw"
+  $wslAvailable = $false
+  if (-not $windowsCommand) {
+    $wslAvailable = Test-WslCommandAvailable "openclaw"
+  }
+
+  return [pscustomobject]@{
+    windows_command = $windowsCommand
+    wsl_available = $wslAvailable
+  }
+}
+
+function Resolve-NpxCommand() {
+  try {
+    $npxCandidates = @(Get-Command npx -All -ErrorAction Stop)
+    $npxCommand = $npxCandidates | Where-Object {
+      $_.Source -and $_.Source.ToLowerInvariant().EndsWith("npx.cmd")
+    } | Select-Object -First 1
+
+    if (-not $npxCommand) {
+      $npxCommand = $npxCandidates | Select-Object -First 1
+    }
+
+    if ($npxCommand -and $npxCommand.Source) {
+      return $npxCommand
+    }
+  } catch {
+    # ignore
+  }
+
+  return $null
+}
+
+function Test-CapabilityHubRunning() {
+  try {
+    $proc = Get-CimInstance Win32_Process | Where-Object { $_.CommandLine -like "*openclaw-capability-hub.js*" } | Select-Object -First 1
+    return ($null -ne $proc)
+  } catch {
+    return $false
+  }
+}
+
+function New-PreflightIssue([string]$Check, [string]$Missing, [string]$Action) {
+  return [pscustomobject]@{
+    check = $Check
+    missing = $Missing
+    action = $Action
+  }
+}
+
 function Test-GatewayReachable() {
   if (Test-Http "$GatewayUrl/health" 2) { return $true }
   try {
@@ -125,6 +199,114 @@ function Get-ControlUiUrl([string]$BaseUrl, [string]$GatewayToken) {
   return "$normalizedBaseUrl/?token=$([uri]::EscapeDataString($GatewayToken.Trim()))"
 }
 
+function Invoke-PreflightChecks() {
+  $summary = New-Object System.Collections.Generic.List[string]
+  $issues = New-Object System.Collections.Generic.List[object]
+
+  $gatewayReachable = $false
+  if ($SkipGateway) {
+    $summary.Add("OpenClaw gateway startup is skipped by parameter.")
+  } else {
+    $gatewayReachable = Test-GatewayReachable
+    if ($gatewayReachable) {
+      $summary.Add("OpenClaw gateway is already reachable.")
+    } else {
+      $openclawAvailability = Resolve-OpenClawAvailability
+      if ($openclawAvailability.windows_command) {
+        $summary.Add("OpenClaw CLI is available on Windows.")
+      } elseif ($openclawAvailability.wsl_available) {
+        $summary.Add("OpenClaw CLI is not on Windows, but WSL fallback is available.")
+      } else {
+        $issues.Add((New-PreflightIssue `
+          -Check "OpenClaw gateway startup on Windows PATH, then WSL fallback" `
+          -Missing "No usable OpenClaw CLI was found for gateway startup" `
+          -Action "Install OpenClaw on Windows so 'openclaw' is on PATH, or install it inside WSL and rerun. Example WSL command: npm install -g openclaw@latest"))
+      }
+    }
+  }
+
+  $vkHealthy = Test-VkHealth
+  if ($vkHealthy) {
+    $summary.Add("vibe-kanban API is already reachable.")
+  } elseif ($VkMode -eq "npx") {
+    $nodeCommand = Get-OptionalCommand "node"
+    if ($nodeCommand) {
+      $summary.Add("Node.js runtime is available for npx startup.")
+    } else {
+      $issues.Add((New-PreflightIssue `
+        -Check "Windows PATH for 'node'" `
+        -Missing "Node.js runtime required for Capability Hub and npx-based vibe-kanban startup" `
+        -Action "Install Node.js 18+ on Windows, reopen your shell, and rerun the same startup command."))
+    }
+
+    $npxCommand = Resolve-NpxCommand
+    if ($npxCommand) {
+      $summary.Add("npx is available for vibe-kanban npx startup.")
+    } else {
+      $issues.Add((New-PreflightIssue `
+        -Check "Windows PATH for 'npx' in '-VkMode npx'" `
+        -Missing "npx required to launch vibe-kanban in npx mode" `
+        -Action "Install Node.js 18+ on Windows so 'npx' is on PATH, or rerun with '-VkMode source' and a local vibe-kanban checkout."))
+    }
+  } else {
+    $devScript = Join-Path $VibeSourceDir "scripts\dev-windows.ps1"
+    if (Test-Path -LiteralPath $VibeSourceDir) {
+      $summary.Add("vibe-kanban source directory exists for source mode.")
+    } else {
+      $issues.Add((New-PreflightIssue `
+        -Check "Configured '-VibeSourceDir' for '-VkMode source'" `
+        -Missing "Local vibe-kanban source checkout" `
+        -Action "Clone the vibe-kanban source tree and pass '-VibeSourceDir <path>', or rerun with '-VkMode npx'."))
+    }
+
+    if (Test-Path -LiteralPath $devScript) {
+      $summary.Add("vibe-kanban source startup script was found.")
+    } else {
+      $issues.Add((New-PreflightIssue `
+        -Check "Expected source startup script at 'scripts\\dev-windows.ps1'" `
+        -Missing "The source-mode dev script required by this starter" `
+        -Action "Use a valid vibe-kanban source checkout, or rerun with '-VkMode npx' for the prebuilt startup path."))
+    }
+  }
+
+  if ($SkipCapabilityHub) {
+    $summary.Add("Capability Hub startup is skipped by parameter.")
+  } elseif (Test-CapabilityHubRunning) {
+    $summary.Add("Capability Hub is already running.")
+  } else {
+    $nodeCommand = Get-OptionalCommand "node"
+    if ($nodeCommand) {
+      if ($vkHealthy -or $VkMode -eq "source") {
+        $summary.Add("Node.js runtime is available for Capability Hub.")
+      }
+    } else {
+      $issues.Add((New-PreflightIssue `
+        -Check "Windows PATH for 'node' before launching Capability Hub" `
+        -Missing "Node.js runtime required to start Capability Hub" `
+        -Action "Install Node.js 18+ on Windows, reopen your shell, and rerun the same startup command."))
+    }
+  }
+
+  Write-Host ""
+  Write-Host "Preflight checks:" -ForegroundColor Cyan
+  foreach ($line in $summary) {
+    Write-Host ("- {0}" -f $line)
+  }
+
+  if ($issues.Count -gt 0) {
+    Write-Host ""
+    Write-Host "Preflight failed. Fix the following and rerun:" -ForegroundColor Red
+    foreach ($issue in $issues) {
+      Write-Host ("- Checked: {0}" -f $issue.check)
+      Write-Host ("  Missing: {0}" -f $issue.missing)
+      Write-Host ("  Next action: {0}" -f $issue.action)
+    }
+    throw "Startup preflight failed. See the required actions above."
+  }
+
+  Write-Host "- Result: all required prerequisites for this startup path are available." -ForegroundColor Green
+}
+
 function Start-GatewayIfNeeded() {
   if ($SkipGateway) { return @{ started = $false; pid = $null; location = "skipped" } }
   if (Test-GatewayReachable) {
@@ -132,8 +314,8 @@ function Start-GatewayIfNeeded() {
   }
 
   # Try Windows-native openclaw first
-  $openclawCmd = $null
-  try { $openclawCmd = Get-Command openclaw -ErrorAction SilentlyContinue } catch {}
+  $openclawAvailability = Resolve-OpenClawAvailability
+  $openclawCmd = $openclawAvailability.windows_command
 
   if ($openclawCmd) {
     # Start on Windows (legacy path)
@@ -159,11 +341,7 @@ function Start-GatewayIfNeeded() {
     throw "OpenClaw gateway (Windows) failed to become reachable at $GatewayUrl (see $stdout / $stderr)"
   }
 
-  # Fallback: try starting openclaw gateway inside WSL
-  $wslCheck = $null
-  try { $wslCheck = wsl -e which openclaw 2>$null } catch {}
-
-  if ($wslCheck) {
+  if ($openclawAvailability.wsl_available) {
     Write-Host "OpenClaw not found on Windows; starting gateway inside WSL..."
     Ensure-Directory $LogDir
     $stdout = Join-Path $LogDir "openclaw-gateway-wsl.out.log"
@@ -182,7 +360,7 @@ function Start-GatewayIfNeeded() {
     throw "OpenClaw gateway (WSL) failed to become reachable at $GatewayUrl (see $stdout / $stderr)"
   }
 
-  throw "OpenClaw command not found on Windows or WSL. Install openclaw in WSL: npm install -g openclaw@latest"
+  throw "OpenClaw CLI is not available on Windows or WSL. Install OpenClaw and rerun. Example WSL command: npm install -g openclaw@latest"
 }
 
 function Test-VkHealth() {
@@ -190,16 +368,9 @@ function Test-VkHealth() {
 }
 
 function Start-VibeKanbanNpx([uri]$VkUri) {
-  $npxCandidates = @(Get-Command npx -All -ErrorAction Stop)
-  $npxCommand = $npxCandidates | Where-Object {
-    $_.Source -and $_.Source.ToLowerInvariant().EndsWith("npx.cmd")
-  } | Select-Object -First 1
-
-  if (-not $npxCommand) {
-    $npxCommand = $npxCandidates | Select-Object -First 1
-  }
+  $npxCommand = Resolve-NpxCommand
   if (-not $npxCommand -or -not $npxCommand.Source) {
-    throw "npx command not found"
+    throw "npx is not available on Windows PATH. Install Node.js 18+ so 'npx' is available, or rerun with '-VkMode source' and a local vibe-kanban checkout."
   }
 
   Ensure-Directory $LogDir
@@ -228,12 +399,12 @@ function Start-VibeKanbanNpx([uri]$VkUri) {
 
 function Start-VibeKanbanSource() {
   if (-not (Test-Path -LiteralPath $VibeSourceDir)) {
-    throw "vibe-kanban source directory not found: $VibeSourceDir"
+    throw "vibe-kanban source directory not found: $VibeSourceDir. Clone vibe-kanban locally and pass '-VibeSourceDir <path>', or rerun with '-VkMode npx'."
   }
 
   $devScript = Join-Path $VibeSourceDir "scripts\dev-windows.ps1"
   if (-not (Test-Path -LiteralPath $devScript)) {
-    throw "Missing dev script: $devScript"
+    throw "vibe-kanban source startup script not found: $devScript. Use a valid source checkout, or rerun with '-VkMode npx'."
   }
 
   Ensure-Directory $LogDir
@@ -294,6 +465,9 @@ function Start-CapabilityHubIfNeeded([string]$GatewayToken) {
   if (-not (Test-Path -LiteralPath $hubScript)) {
     throw "Hub script not found: $hubScript"
   }
+  if (-not (Get-OptionalCommand "node")) {
+    throw "Node.js runtime not found on Windows PATH. Install Node.js 18+ and rerun so Capability Hub can start."
+  }
 
   Ensure-Directory $LogDir
   $stdout = Join-Path $LogDir "capability-hub.out.log"
@@ -326,6 +500,7 @@ function Inject-McpConfig() {
 
 Ensure-Directory $LogDir
 
+Invoke-PreflightChecks
 $gateway = Start-GatewayIfNeeded
 $token = Get-GatewayToken
 $vk = Start-VibeKanbanIfNeeded

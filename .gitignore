@@ -21,11 +21,16 @@ capability-hub/*
 !capability-hub/config/
 !capability-hub/config/**
 !capability-hub/scripts/
+!capability-hub/templates/
+!capability-hub/templates/**
 capability-hub/scripts/*
 !capability-hub/scripts/check-m5-openclaw-contract.ps1
+!capability-hub/scripts/ensure-plan2vk-skill.ps1
+!capability-hub/scripts/ensure-vk-bindings.ps1
 !capability-hub/scripts/m5-dispatch-client.js
 !capability-hub/scripts/openclaw-env.ps1
 !capability-hub/scripts/resolve-openclaw-config.ps1
+!capability-hub/scripts/resolve-openclaw-workspace.ps1
 !capability-hub/scripts/run-openclaw-user-flow.ps1
 !capability-hub/scripts/self-test.js
 !capability-hub/scripts/start-openclaw-vk-stack.ps1

@@ -1,0 +1,56 @@
+---
+name: plan2vk
+description: Decompose a concrete goal into 1-10 subtasks and dispatch them into vibe-kanban via capability-hub.
+user-invocable: true
+disable-model-invocation: true
+---
+
+{{MANAGED_MARKER}}
+
+# `plan2vk`
+
+Use this skill only when the user explicitly invokes `/plan2vk ...`.
+
+## Workflow
+
+1. Treat the full slash-command argument as the `goal`.
+2. If the goal is empty or only whitespace, ask the user for one concrete goal sentence and stop.
+3. Decompose the goal into **1..10** atomic, verifiable subtasks.
+4. Each subtask must include a concise `title`; add `description` only when it removes ambiguity.
+5. Preferred path: if tool `cap.vk_plan_and_dispatch` is available, call it **exactly once** with:
+   - `goal`
+   - `subtasks`
+   - `assist_planning: true` unless the user explicitly asks to disable it
+6. Secondary runtime fallback: if `cap.vk_plan_and_dispatch` is unavailable, do **not** stop after reporting that fact.
+   - Use the `write` tool to save the already-decomposed `subtasks` array as JSON to `{{SUBTASKS_FILE}}`.
+   - Then use the `exec` tool with working directory `{{HUB_DIR}}` to run:
+     `node scripts/m5-dispatch-client.js --mode dispatch --gateway-url {{GATEWAY_URL}} --goal "<goal>" --subtasks-file "{{SUBTASKS_FILE}}" --trace-id openclaw-plan2vk --idempotency-key openclaw-plan2vk-<unix_ts>`
+   - Parse the command output as the dispatch result and continue as if the tool had returned it.
+   - Do not ask the user whether you should execute this fallback; execute it automatically when `write` and `exec` are available.
+7. Do not ask extra clarification when the goal is already actionable.
+8. After either dispatch path returns, reply with a concise dispatch summary:
+   - parent task id (if present)
+   - created subtask ids and executor assignments
+   - returned links (if any)
+
+## Decomposition rules
+
+- Favor atomic, single-responsibility subtasks.
+- Keep titles short and action-oriented.
+- Prefer minimal dependency chains between subtasks.
+- Do not create more than 10 subtasks.
+- If the goal is too vague to decompose responsibly, ask one concise clarification question instead of dispatching.
+
+## Failure handling
+
+- If `cap.vk_plan_and_dispatch` is unavailable **and** either `write` or `exec` is unavailable, say which runtime prerequisite is missing.
+- Then provide one concrete manual retry step:
+  - `cd "{{HUB_DIR}}"`
+  - `node scripts/m5-dispatch-client.js --mode dispatch --gateway-url {{GATEWAY_URL}} --goal "<goal>" --subtasks-file "{{SUBTASKS_FILE}}"`
+- If the fallback command returns an error, surface that error instead of silently claiming success.
+
+## Notes
+
+- This skill is the **primary** `/plan2vk` path.
+- The `AGENTS.md` M5 block is only a fallback/operator note for prototype environments where this skill is missing or not yet refreshed.
+- The documented secondary fallback is `write` + `exec` -> `scripts/m5-dispatch-client.js` when the runtime tool list does not expose `cap.vk_plan_and_dispatch`.
