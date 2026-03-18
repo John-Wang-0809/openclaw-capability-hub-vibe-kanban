@@ -1,6 +1,47 @@
 # openclaw-capability-hub-vibe-kanban
 
-Use this repository to bootstrap a local OpenClaw + Capability Hub + vibe-kanban workflow with one command, then send `/plan2vk <goal>` from chat.
+This system turns a plain-language goal typed in chat into a set of tracked, assignable tasks that real executors (AI agents or humans) can pick up and work on.
+
+It connects three components:
+
+- **OpenClaw** — the chat interface where you type goals and receive results
+- **Capability Hub** — a local bridge that receives your goal, breaks it into subtasks, routes each subtask to the right executor, and delivers results back to chat
+- **vibe-kanban** — a task board that stores and displays every subtask so you can track progress visually
+
+You type `/plan2vk <your goal>` in OpenClaw chat → Capability Hub decomposes it into subtasks and routes them → the tasks appear on your vibe-kanban board, ready for execution. This repository automates the setup of all three components with one command.
+
+## How this system works
+
+```
+┌──────────┐    goal     ┌────────────────┐  subtasks  ┌─────────────┐
+│ You      │ ──────────► │ OpenClaw       │ ─────────► │ Capability  │
+│ (chat)   │             │ (chat gateway) │            │ Hub (bridge)│
+└──────────┘             └────────────────┘            └──────┬──────┘
+                                                              │
+                                                    route & create tasks
+                                                              │
+                                                              ▼
+                                                       ┌─────────────┐
+                                                       │ vibe-kanban │
+                                                       │ (task board)│
+                                                       └──────┬──────┘
+                                                              │
+                                                         assign tasks
+                                                              │
+                                                              ▼
+                                                       ┌─────────────┐
+                                                       │  Executors  │
+                                                       │ (AI / human)│
+                                                       └─────────────┘
+```
+
+1. **You** type a goal in OpenClaw chat (e.g. `/plan2vk build a login page`)
+2. **OpenClaw** forwards the goal to Capability Hub via its gateway
+3. **Capability Hub** decomposes the goal into subtasks, picks the best executor for each one, and creates them in vibe-kanban
+4. **vibe-kanban** stores the tasks on a board where you (and executors) can track progress
+5. **Executors** (Codex, Claude Code, or a human) pick up and complete the tasks
+
+This repo bootstraps all three components locally so you can go from zero to a working pipeline in one command.
 
 ## What you can do with this repo
 
@@ -98,6 +139,12 @@ Common stop points:
 
 - **Fallback timeout**
   Increase `M5_DISPATCH_TIMEOUT_MS` or use a larger `--timeout-ms` value when testing the fallback client directly.
+
+---
+
+# For developers and contributors
+
+Everything above this line is what you need to set up and use the system. The sections below cover advanced operation, verification, and engineering details.
 
 ## Advanced manual mode
 
