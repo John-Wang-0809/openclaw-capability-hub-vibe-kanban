@@ -131,3 +131,28 @@ npm run verify:m5:e2e
 
 - `PRODUCT_ARCHITECTURE_DEEP_DIVE.md` — engineering design and system model
 - `capability-hub/README.md` — module-level runbook and bootstrap/startup details
+
+## Recent changes
+
+### P1: LLM-based task routing and structured dispatch tracing
+
+The dispatch pipeline now supports two routing modes, configured in `capability-hub/config/m5-dispatch-policy.json`:
+
+**LLM routing** (`routing_mode: "llm"`):
+- Classifies all subtasks in a single LLM call using the Anthropic SDK
+- Each executor has a semantic description; the model picks the best match per subtask
+- Returns `route_type`, `confidence` (0.0–1.0), and `reasoning` for every subtask
+- Supports `api_key` and `base_url` in the config file (for API proxies)
+- Per-task fallback: if the LLM returns an unknown executor name, that subtask falls back to regex
+- Global fallback: if the LLM call fails entirely (timeout, auth error, parse error), all subtasks fall back to regex
+
+**Regex routing** (`routing_mode: "regex"`, default):
+- Unchanged behavior from before; pattern-matches subtask titles against `routing_rules`
+
+**Structured tracing**:
+- Every dispatch produces a span tree written to `m5-dispatch-traces.jsonl`
+- Spans cover: input validation, idempotency check, project validation, parent task creation, workspace resolution, routing decision, each subtask creation, and assist task creation
+- Each span records `started_at`, `ended_at`, `duration_ms`, `status`, `input`, `output`, and `dotted_order`
+- LLM routing spans additionally record `token_usage` (input/output tokens)
+- The existing flat log (`m5-dispatch-log.jsonl`) gains three optional fields: `routing_mode`, `total_duration_ms`, `trace_file`
+- Tracing is best-effort and never blocks the dispatch flow
