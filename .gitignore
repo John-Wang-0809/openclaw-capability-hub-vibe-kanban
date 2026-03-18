@@ -43,6 +43,7 @@ capability-hub/scripts/*
 # Local-only capability-hub files
 capability-hub/vk-bindings.local.json
 capability-hub/vibe-kanban.mcp-servers.json
+capability-hub/config/m5-dispatch-policy.json
 
 # Curated test subset
 test/*

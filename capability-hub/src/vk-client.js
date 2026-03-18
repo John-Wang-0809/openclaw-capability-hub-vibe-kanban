@@ -3,17 +3,21 @@
  *  - Node.js fetch/fs/path/crypto runtime.
  *  - Local config files: vk-bindings.local.json (preferred) or vk-bindings.json, plus config/m5-dispatch-policy.json.
  *  - vibe-kanban HTTP API: /api/projects/{id}/repositories, /api/tasks/create-and-start, /api/task-attempts.
+ *  - @anthropic-ai/sdk (dynamic import, only when routing_mode=llm).
+ *  - ./trace.js: createTrace for structured dispatch tracing.
  * [OUT] Outputs:
  *  - createM5DispatchService(): dispatcher for M5 reverse orchestration.
- *  - Dispatch result payload with parent/subtask/assist ids, warnings, and structured errors.
+ *  - Dispatch result payload with parent/subtask/assist ids, routing metadata (route_type/confidence/reasoning), warnings, and structured errors.
+ *  - Structured trace output to m5-dispatch-traces.jsonl.
  * [POS] Position in the system:
  *  - Capability Hub internal adapter for M5 dispatch flow.
- *  - Owns vk API calls, routing policy execution, idempotency cache, and dispatch logs.
+ *  - Owns vk API calls, routing policy execution (regex + LLM), idempotency cache, dispatch logs, and trace output.
  */
 import crypto from "node:crypto";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { createTrace } from "./trace.js";
 
 const DEFAULT_VK_API_BASE_URL = "http://127.0.0.1:3001";
 const DEFAULT_TTL_MS = 30 * 60 * 1000;
@@ -292,6 +296,147 @@ function pruneExpiredState(state, nowMs) {
   return state;
 }
 
+// ---------------------------------------------------------------------------
+// LLM Routing — batch classification via Anthropic SDK
+// ---------------------------------------------------------------------------
+
+let _anthropicClient = null;
+
+async function getOrCreateAnthropicClient(policy) {
+  if (_anthropicClient) return _anthropicClient;
+  const { default: Anthropic } = await import("@anthropic-ai/sdk");
+  const baseURL =
+    toCleanString(policy?.routing_llm?.base_url) ||
+    toCleanString(process.env.ANTHROPIC_BASE_URL) ||
+    undefined;
+  const apiKey =
+    toCleanString(policy?.routing_llm?.api_key) ||
+    toCleanString(process.env.ANTHROPIC_API_KEY) ||
+    undefined;
+  _anthropicClient = new Anthropic({
+    ...(baseURL ? { baseURL } : {}),
+    ...(apiKey ? { apiKey } : {}),
+  });
+  return _anthropicClient;
+}
+
+function buildRoutingPrompt(executors, subtasks) {
+  const executorList = Object.entries(executors)
+    .map(([name, cfg]) => `- ${name}: ${cfg?.description || name}`)
+    .join("\n");
+
+  const taskList = subtasks
+    .map((t, i) => `${i + 1}. title: "${t.title}"${t.description ? `\n   description: "${t.description}"` : ""}`)
+    .join("\n");
+
+  return `You are a task routing classifier. Given a list of executor profiles and a list of subtasks, assign each subtask to the most appropriate executor.
+
+## Available Executors
+${executorList}
+
+## Subtasks
+${taskList}
+
+## Instructions
+Return a JSON array with exactly ${subtasks.length} objects, one per subtask in order. Each object must have:
+- "executor": one of the executor names listed above (exact string match)
+- "confidence": a number between 0.0 and 1.0
+- "reasoning": a brief explanation (1 sentence)
+
+Return ONLY the JSON array, no other text.`;
+}
+
+async function routeSubtasksWithLlm(policy, subtasks, compiledRules, defaultExecutor, routeSpan) {
+  const executors = isObject(policy?.executors) ? policy.executors : {};
+  const validExecutorNames = new Set(Object.keys(executors));
+  if (validExecutorNames.size < 1) {
+    // No executor descriptions configured; fall back to regex
+    return subtasks.map((task) => ({
+      executor: pickExecutorForTask(compiledRules, defaultExecutor, task),
+      confidence: null,
+      reasoning: "llm_fallback: no executors configured",
+      route_type: "regex",
+    }));
+  }
+
+  try {
+    const client = await getOrCreateAnthropicClient(policy);
+    const llmConfig = policy?.routing_llm || {};
+    const model = toCleanString(llmConfig.model) || "claude-3-5-haiku-latest";
+    const maxTokens = Number.isFinite(llmConfig.max_tokens) ? llmConfig.max_tokens : 1024;
+    const timeoutMs = Number.isFinite(llmConfig.timeout_ms) ? llmConfig.timeout_ms : 10000;
+    const temperature = typeof llmConfig.temperature === "number" ? llmConfig.temperature : 0.0;
+
+    const prompt = buildRoutingPrompt(executors, subtasks);
+
+    let response;
+    response = await client.messages.create(
+      {
+        model,
+        max_tokens: maxTokens,
+        temperature,
+        messages: [{ role: "user", content: prompt }],
+      },
+      { timeout: timeoutMs },
+    );
+
+    // Record token usage on the routing span
+    const tokenUsage = response?.usage
+      ? { input_tokens: response.usage.input_tokens, output_tokens: response.usage.output_tokens }
+      : null;
+    if (routeSpan && tokenUsage) {
+      // Attach to span via extra when it ends (handled by caller), store on span record directly
+      routeSpan.record.token_usage = tokenUsage;
+    }
+
+    // Extract text content from response
+    const textBlock = ensureArray(response?.content).find((b) => b?.type === "text");
+    const rawText = toCleanString(textBlock?.text);
+    if (!rawText) {
+      throw new Error("LLM returned empty response");
+    }
+
+    // Parse JSON array from response (may be wrapped in ```json ... ```)
+    const jsonMatch = rawText.match(/\[[\s\S]*\]/);
+    if (!jsonMatch) {
+      throw new Error("LLM response does not contain a JSON array");
+    }
+    const parsed = JSON.parse(jsonMatch[0]);
+    if (!Array.isArray(parsed) || parsed.length !== subtasks.length) {
+      throw new Error(`LLM returned ${Array.isArray(parsed) ? parsed.length : "non-array"} items, expected ${subtasks.length}`);
+    }
+
+    // Map results with per-task fallback for invalid executors
+    return parsed.map((item, i) => {
+      const executor = toCleanString(item?.executor);
+      if (executor && validExecutorNames.has(executor)) {
+        return {
+          executor,
+          confidence: typeof item.confidence === "number" ? item.confidence : null,
+          reasoning: toCleanString(item?.reasoning) || "llm",
+          route_type: "llm",
+        };
+      }
+      // Per-task fallback: invalid executor name
+      return {
+        executor: pickExecutorForTask(compiledRules, defaultExecutor, subtasks[i]),
+        confidence: null,
+        reasoning: `llm_task_fallback: invalid executor "${executor}"`,
+        route_type: "regex",
+      };
+    });
+  } catch (error) {
+    // Global fallback: LLM call failed entirely
+    const reason = `llm_error_fallback: ${error instanceof Error ? error.message : String(error)}`;
+    return subtasks.map((task) => ({
+      executor: pickExecutorForTask(compiledRules, defaultExecutor, task),
+      confidence: null,
+      reasoning: reason,
+      route_type: "regex",
+    }));
+  }
+}
+
 export function createM5DispatchService(options = {}) {
   const srcDir = path.dirname(fileURLToPath(import.meta.url));
   const hubRoot = path.resolve(options.hubRoot ?? path.resolve(srcDir, ".."));
@@ -303,12 +448,23 @@ export function createM5DispatchService(options = {}) {
     ],
     statePath: path.join(hubRoot, "m5-dispatch-state.json"),
     logPath: path.join(hubRoot, "m5-dispatch-log.jsonl"),
+    tracePath: path.join(hubRoot, "m5-dispatch-traces.jsonl"),
   };
+
+  async function finalizeTrace(trace, _result) {
+    try {
+      await appendJsonl(paths.tracePath, trace.toJSON());
+    } catch {
+      // trace output is best-effort; never block dispatch
+    }
+  }
 
   async function dispatch(rawArgs, context = {}) {
     const traceId = toCleanString(context.traceId) || crypto.randomUUID();
     const goal = toCleanString(rawArgs?.goal);
     const dispatchId = crypto.randomUUID();
+    const dispatchStartMs = Date.now();
+    const trace = createTrace(traceId, { dispatch_id: dispatchId, goal });
 
     const bindingsPath = await resolveFirstExistingFilePath(
       paths.bindingsPaths,
@@ -334,20 +490,32 @@ export function createM5DispatchService(options = {}) {
     const idempotencyKey =
       toCleanString(rawArgs?.idempotency_key) || toCleanString(context?.meta?.trace_id) || traceId;
 
+    // --- Span: validate_input ---
+    const validateSpan = trace.startSpan("validate_input", "validation", {
+      input: { goal: !!goal, projectId: !!projectId, defaultExecutor: !!defaultExecutor, repoSpecs: repoSpecs.length },
+    });
     if (!goal) {
       result.errors.push({ code: "invalid_input", message: "goal is required", stage: "validate_input" });
+      validateSpan.end("error", { reason: "missing goal" });
+      await finalizeTrace(trace, result);
       return result;
     }
     if (!projectId) {
       result.errors.push({ code: "invalid_input", message: "project_id is required", stage: "validate_input" });
+      validateSpan.end("error", { reason: "missing project_id" });
+      await finalizeTrace(trace, result);
       return result;
     }
     if (!defaultExecutor) {
       result.errors.push({ code: "invalid_input", message: "vk-bindings.defaultExecutorProfileId is required", stage: "validate_bindings" });
+      validateSpan.end("error", { reason: "missing defaultExecutor" });
+      await finalizeTrace(trace, result);
       return result;
     }
     if (repoSpecs.length < 1) {
       result.errors.push({ code: "invalid_input", message: "repo_ids or vk-bindings.repoBindings is required", stage: "validate_bindings" });
+      validateSpan.end("error", { reason: "missing repoSpecs" });
+      await finalizeTrace(trace, result);
       return result;
     }
 
@@ -358,35 +526,56 @@ export function createM5DispatchService(options = {}) {
     result.warnings.push(...sanitized.warnings);
     result.errors.push(...sanitized.errors);
     if (result.errors.length > 0) {
+      validateSpan.end("error", { reason: "subtask validation failed" });
+      await finalizeTrace(trace, result);
       return result;
     }
+    validateSpan.end("ok", { subtask_count: sanitized.subtasks.length });
 
+    // --- Span: check_idempotency ---
+    const idempSpan = trace.startSpan("check_idempotency", "validation", {
+      input: { idempotency_key: idempotencyKey },
+    });
     const nowMs = Date.now();
     const state = pruneExpiredState(await loadDispatchState(paths.statePath), nowMs);
     const cached = state.records[idempotencyKey];
     if (cached && isObject(cached.result)) {
+      idempSpan.end("ok", { cache_hit: true });
+      await finalizeTrace(trace, result);
       return {
         ...cached.result,
         warnings: [...ensureArray(cached.result.warnings), `idempotency cache hit: ${idempotencyKey}`],
       };
     }
+    idempSpan.end("ok", { cache_hit: false });
 
     const vkApi = new VkApiClient({
       baseUrl: normalizeBaseUrl(bindings?.vkApiBaseUrl, DEFAULT_VK_API_BASE_URL),
     });
     const uiBase = normalizeBaseUrl(bindings?.vkUiBaseUrl, vkApi.baseUrl);
 
+    // --- Span: validate_project ---
+    const projSpan = trace.startSpan("validate_project", "http", {
+      input: { project_id: projectId },
+    });
     try {
       await vkApi.getProjectRepositories(projectId);
+      projSpan.end("ok");
     } catch (error) {
       result.errors.push({
         code: "temporary_failure",
         message: error instanceof Error ? error.message : String(error),
         stage: "validate_project_repositories",
       });
+      projSpan.end("error", { message: error instanceof Error ? error.message : String(error) });
+      await finalizeTrace(trace, result);
       return result;
     }
 
+    // --- Span: create_parent ---
+    const parentSpan = trace.startSpan("create_parent", "http", {
+      input: { project_id: projectId, goal: goal.slice(0, 80) },
+    });
     try {
       const parentPayload = {
         task: {
@@ -402,15 +591,22 @@ export function createM5DispatchService(options = {}) {
       if (!result.parent_task_id) {
         throw new Error("Unable to resolve parent_task_id from create-and-start response");
       }
+      parentSpan.end("ok", { parent_task_id: result.parent_task_id });
     } catch (error) {
       result.errors.push({
         code: "temporary_failure",
         message: error instanceof Error ? error.message : String(error),
         stage: "create_parent",
       });
+      parentSpan.end("error", { message: error instanceof Error ? error.message : String(error) });
+      await finalizeTrace(trace, result);
       return result;
     }
 
+    // --- Span: resolve_workspace ---
+    const wsSpan = trace.startSpan("resolve_workspace", "http", {
+      input: { parent_task_id: result.parent_task_id },
+    });
     try {
       for (let i = 0; i < 5; i += 1) {
         const attempts = await vkApi.getTaskAttempts(result.parent_task_id);
@@ -420,14 +616,45 @@ export function createM5DispatchService(options = {}) {
       }
       if (!result.parent_workspace_id) {
         result.warnings.push("parent workspace id not found yet; child tasks created without parent_workspace_id");
+        wsSpan.end("ok", { found: false });
+      } else {
+        wsSpan.end("ok", { workspace_id: result.parent_workspace_id });
       }
     } catch (error) {
       result.warnings.push(`parent workspace lookup failed: ${error instanceof Error ? error.message : String(error)}`);
+      wsSpan.end("error", { message: error instanceof Error ? error.message : String(error) });
     }
+
+    // --- Span: route_subtasks ---
+    const routingMode = toCleanString(policy?.routing_mode) || "regex";
+    const routeSpan = trace.startSpan("route_subtasks", routingMode === "llm" ? "llm" : "regex", {
+      input: { routing_mode: routingMode, subtask_count: sanitized.subtasks.length },
+    });
+    let routingDecisions;
+    if (routingMode === "llm") {
+      routingDecisions = await routeSubtasksWithLlm(
+        policy, sanitized.subtasks, compiledRules, defaultExecutor, routeSpan,
+      );
+    } else {
+      routingDecisions = sanitized.subtasks.map((task) => ({
+        executor: pickExecutorForTask(compiledRules, defaultExecutor, task),
+        confidence: null,
+        reasoning: "regex",
+        route_type: "regex",
+      }));
+    }
+    routeSpan.end("ok", {
+      routing_mode: routingMode,
+      decisions: routingDecisions.map((d) => ({ executor: d.executor, route_type: d.route_type })),
+    });
 
     for (let i = 0; i < sanitized.subtasks.length; i += 1) {
       const task = sanitized.subtasks[i];
-      const executor = pickExecutorForTask(compiledRules, defaultExecutor, task);
+      const decision = routingDecisions[i];
+      const executor = decision?.executor || pickExecutorForTask(compiledRules, defaultExecutor, task);
+      const subtaskSpan = trace.startSpan(`create_subtask_${i + 1}`, "http", {
+        input: { title: task.title, executor },
+      });
       const payload = {
         task: {
           project_id: projectId,
@@ -444,19 +671,31 @@ export function createM5DispatchService(options = {}) {
         if (!taskId) {
           throw new Error("Unable to resolve subtask id from create-and-start response");
         }
-        result.subtasks_created.push({ task_id: taskId, executor, title: task.title });
+        result.subtasks_created.push({
+          task_id: taskId,
+          executor,
+          title: task.title,
+          route_type: decision?.route_type || "regex",
+          confidence: decision?.confidence ?? null,
+          reasoning: decision?.reasoning || "regex",
+        });
+        subtaskSpan.end("ok", { task_id: taskId });
       } catch (error) {
         result.errors.push({
           code: "temporary_failure",
           message: error instanceof Error ? error.message : String(error),
           stage: `create_subtask_${i + 1}`,
         });
+        subtaskSpan.end("error", { message: error instanceof Error ? error.message : String(error) });
       }
     }
 
     const assistEnabled = rawArgs?.assist_planning !== false && policy?.assist?.enabled !== false;
     const assistExecutor = toCleanString(policy?.assist?.executor) || "CODEX";
     if (assistEnabled) {
+      const assistSpan = trace.startSpan("create_assist", "http", {
+        input: { executor: assistExecutor },
+      });
       const assistPayload = {
         task: {
           project_id: projectId,
@@ -470,8 +709,10 @@ export function createM5DispatchService(options = {}) {
       try {
         const assistCreated = await vkApi.createAndStartTask(assistPayload);
         result.assist_task_id = resolveTaskId(assistCreated);
+        assistSpan.end("ok", { assist_task_id: result.assist_task_id });
       } catch (error) {
         result.warnings.push(`assist task failed: ${error instanceof Error ? error.message : String(error)}`);
+        assistSpan.end("error", { message: error instanceof Error ? error.message : String(error) });
       }
     }
 
@@ -512,8 +753,12 @@ export function createM5DispatchService(options = {}) {
       ok: result.ok,
       warnings: result.warnings,
       errors: result.errors,
+      routing_mode: routingMode,
+      total_duration_ms: Date.now() - dispatchStartMs,
+      trace_file: "m5-dispatch-traces.jsonl",
     });
 
+    await finalizeTrace(trace, result);
     return result;
   }
 

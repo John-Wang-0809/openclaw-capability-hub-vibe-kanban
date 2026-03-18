@@ -55,12 +55,18 @@ function Invoke-VkGet([string]$Path) {
   return Invoke-RestMethod -Method Get -Uri $url -TimeoutSec 20 -ErrorAction Stop
 }
 function Invoke-M5Client([string[]]$CommandArgs) {
-  $out = & node @CommandArgs
-  $code = $LASTEXITCODE
-  return [ordered]@{
-    exit_code = $code
-    json = Parse-JsonLine -Output $out
-    output = $out
+  $prevEncoding = [Console]::OutputEncoding
+  [Console]::OutputEncoding = [Text.Encoding]::UTF8
+  try {
+    $out = & node @CommandArgs
+    $code = $LASTEXITCODE
+    return [ordered]@{
+      exit_code = $code
+      json = Parse-JsonLine -Output $out
+      output = $out
+    }
+  } finally {
+    [Console]::OutputEncoding = $prevEncoding
   }
 }
 function Invoke-OpenClawAgent([string]$Message, [string]$TargetSessionId) {

@@ -28,10 +28,10 @@
 
 | Path | Responsibility |
 |------|----------------|
-| `src/` | Hub runtime source: MCP server entrypoint, gateway bridge, and vibe-kanban client |
+| `src/` | Hub runtime source: MCP server entrypoint, gateway bridge, vibe-kanban client, and structured trace utility |
 | `scripts/` | User-flow bootstrap, manual startup, environment resolution, skill/bindings persistence, MCP injection, fallback dispatch, and verification |
 | `templates/` | Repo-managed workspace templates for `/plan2vk` skill installation and fallback AGENTS notes |
-| `config/` | Dispatch and approval policies used by the runtime |
+| `config/` | Dispatch and approval policies used by the runtime (includes LLM routing config) |
 | `evidence/` | Sanitized selected verification snapshots retained in the public repo |
 | `package.json` | npm entrypoints for startup, self-test, and M5 verification |
 | `package-lock.json` | Node dependency lockfile |
@@ -158,6 +158,17 @@ The public repo keeps sanitized selected snapshots in `evidence/`.
 | `evidence/README.md` | Scope, curation, and redaction rules for the public evidence set |
 
 ## Troubleshooting
+
+### LLM routing
+
+The dispatch policy (`config/m5-dispatch-policy.json`) supports two routing modes:
+
+- `"routing_mode": "regex"` (default) — uses regex pattern matching on task titles/descriptions
+- `"routing_mode": "llm"` — uses Claude API to semantically classify subtasks to executors
+
+LLM routing requires `ANTHROPIC_API_KEY` in the environment. The `routing_llm.base_url` field supports API proxies (falls back to `ANTHROPIC_BASE_URL` env var, then SDK default). If the LLM call fails, all subtasks automatically fall back to regex routing.
+
+Structured traces are written to `m5-dispatch-traces.jsonl` (alongside the existing `m5-dispatch-log.jsonl`).
 
 ### Bootstrap says OpenClaw is installed but not configured
 
