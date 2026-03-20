@@ -10,9 +10,12 @@
   "scripts": {
     "start": "node ./src/openclaw-capability-hub.js",
     "self-test": "node ./scripts/self-test.js",
-    "verify:m5:skill": "powershell -NoProfile -ExecutionPolicy Bypass -File .\\scripts\\check-m5-openclaw-contract.ps1",
-    "verify:m5:tool": "powershell -NoProfile -ExecutionPolicy Bypass -File .\\scripts\\verify-m5-dispatch.ps1 -Mode tool -OutputPath .\\m5-verify-report-tool.json",
-    "verify:m5:e2e": "powershell -NoProfile -ExecutionPolicy Bypass -File .\\scripts\\verify-m5-dispatch.ps1 -Mode e2e -OutputPath .\\m5-verify-report-e2e.json"
+    "verify:m5:skill": "node scripts/check-m5-openclaw-contract.mjs",
+    "verify:m5:tool": "node scripts/verify-m5-dispatch.mjs --mode tool --output-path m5-verify-report-tool.json",
+    "verify:m5:e2e": "node scripts/verify-m5-dispatch.mjs --mode e2e --output-path m5-verify-report-e2e.json",
+    "verify:m5:skill:ps1": "powershell -NoProfile -ExecutionPolicy Bypass -File .\\scripts\\check-m5-openclaw-contract.ps1",
+    "verify:m5:tool:ps1": "powershell -NoProfile -ExecutionPolicy Bypass -File .\\scripts\\verify-m5-dispatch.ps1 -Mode tool -OutputPath .\\m5-verify-report-tool.json",
+    "verify:m5:e2e:ps1": "powershell -NoProfile -ExecutionPolicy Bypass -File .\\scripts\\verify-m5-dispatch.ps1 -Mode e2e -OutputPath .\\m5-verify-report-e2e.json"
   },
   "keywords": [],
   "author": "",

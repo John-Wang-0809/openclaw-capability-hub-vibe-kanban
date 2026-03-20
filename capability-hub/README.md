@@ -49,24 +49,57 @@
 | `cap.ask_user` | Human approval / operator interaction |
 | `cap.vk_plan_and_dispatch` | Reverse dispatch into vibe-kanban |
 
+## Platform support
+
+All scripts are available for **macOS, Linux, and Windows**:
+
+| Function | macOS / Linux | Windows |
+|----------|---------------|---------|
+| One-click bootstrap | `run-openclaw-user-flow.sh` | `run-openclaw-user-flow.ps1` |
+| Stack startup | `start-openclaw-vk-stack.sh` | `start-openclaw-vk-stack.ps1` |
+| Stack shutdown | `stop-openclaw-vk-stack.sh` | `stop-openclaw-vk-stack.ps1` |
+| Config resolution | `resolve-openclaw-config.sh` | `resolve-openclaw-config.ps1` |
+| Workspace resolution | `resolve-openclaw-workspace.sh` | `resolve-openclaw-workspace.ps1` |
+| Skill installation | `ensure-plan2vk-skill.sh` | `ensure-plan2vk-skill.ps1` |
+| Binding persistence | `ensure-vk-bindings.sh` | `ensure-vk-bindings.ps1` |
+| MCP injection | `vk-inject-mcp.sh` | `vk-inject-mcp.ps1` |
+| Shell env setup | `openclaw-env.sh` | `openclaw-env.ps1` |
+| Verification | `npm run verify:m5:*` (Node.js, cross-platform) | same |
+
+The bash scripts require `jq` and `curl` (auto-installed by the bootstrap if missing).
+
 ## Recommended user path
 
-From the repo root:
+**macOS / Linux:**
+
+```bash
+bash ./scripts/run-openclaw-user-flow.sh
+```
+
+**Windows (PowerShell):**
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File .\capability-hub\scripts\run-openclaw-user-flow.ps1
+powershell -ExecutionPolicy Bypass -File .\scripts\run-openclaw-user-flow.ps1
 ```
 
 That command now performs the full first-run bootstrap:
 
 - checks local OpenClaw workspace readiness
 - ensures Capability Hub dependencies exist
-- prompts once before installing missing Windows tools when supported
+- prompts once before installing missing tools when supported
 - installs or updates the managed `/plan2vk` workspace skill
 - starts or reuses the local stack
 - persists one remembered vibe-kanban project/repository choice in `vk-bindings.local.json`
 
-Use `-Reconfigure` when you want to choose a different saved project/repository later:
+Use `-Reconfigure` / `--reconfigure` when you want to choose a different saved project/repository later:
+
+**macOS / Linux:**
+
+```bash
+bash ./scripts/run-openclaw-user-flow.sh --reconfigure
+```
+
+**Windows (PowerShell):**
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File .\scripts\run-openclaw-user-flow.ps1 -Reconfigure
@@ -100,22 +133,36 @@ You only need to edit it manually if you intentionally want to bypass the bootst
 
 | Path | Responsibility |
 |------|----------------|
-| `scripts/run-openclaw-user-flow.ps1` | Public one-command bootstrap + startup entrypoint |
-| `scripts/start-openclaw-vk-stack.ps1` | Advanced/manual starter with fail-fast preflight checks |
-| `scripts/stop-openclaw-vk-stack.ps1` | Stop the local stack |
-| `scripts/resolve-openclaw-config.ps1` | Discover OpenClaw config and token sources across Windows and WSL |
-| `scripts/resolve-openclaw-workspace.ps1` | Resolve the OpenClaw workspace path and runtime hint for bootstrap helpers |
-| `scripts/ensure-plan2vk-skill.ps1` | Install/update the managed `/plan2vk` skill and fallback AGENTS block |
-| `scripts/ensure-vk-bindings.ps1` | Discover, prompt for, and persist the remembered vibe-kanban project/repository binding |
-| `scripts/vk-inject-mcp.ps1` | Inject the Capability Hub MCP server into vibe-kanban |
-| `scripts/check-m5-openclaw-contract.ps1` | Validate `/plan2vk` skill readiness and fallback visibility on Windows or WSL OpenClaw |
+| `scripts/run-openclaw-user-flow.{ps1,sh}` | Public one-command bootstrap + startup entrypoint |
+| `scripts/start-openclaw-vk-stack.{ps1,sh}` | Advanced/manual starter with fail-fast preflight checks |
+| `scripts/stop-openclaw-vk-stack.{ps1,sh}` | Stop the local stack |
+| `scripts/resolve-openclaw-config.{ps1,sh}` | Discover OpenClaw config and token sources |
+| `scripts/resolve-openclaw-workspace.{ps1,sh}` | Resolve the OpenClaw workspace path for bootstrap helpers |
+| `scripts/ensure-plan2vk-skill.{ps1,sh}` | Install/update the managed `/plan2vk` skill and fallback AGENTS block |
+| `scripts/ensure-vk-bindings.{ps1,sh}` | Discover, prompt for, and persist the remembered vibe-kanban binding |
+| `scripts/vk-inject-mcp.{ps1,sh}` | Inject the Capability Hub MCP server into vibe-kanban |
+| `scripts/openclaw-env.{ps1,sh}` | Set gateway env vars for the current shell |
+| `scripts/_utils.sh` | Shared bash utility functions (macOS/Linux only) |
+| `scripts/check-m5-openclaw-contract.mjs` | Cross-platform Node.js skill readiness validator |
+| `scripts/verify-m5-dispatch.mjs` | Cross-platform Node.js dispatch verifier |
 | `scripts/m5-dispatch-client.js` | Thin fallback MCP client for `cap.vk_plan_and_dispatch` |
-| `scripts/verify-m5-dispatch.ps1` | Verify the M5 tool path or chat path |
 | `scripts/self-test.js` | Lightweight hub connectivity self-test |
 
 ## Advanced/manual startup
 
 Use this only when you intentionally want to manage startup yourself:
+
+**macOS / Linux:**
+
+```bash
+bash ./scripts/start-openclaw-vk-stack.sh \
+  --vk-mode npx \
+  --vk-api-base-url http://127.0.0.1:3001 \
+  --gateway-url http://127.0.0.1:18789 \
+  --executors CODEX,CLAUDE_CODE
+```
+
+**Windows (PowerShell):**
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File .\scripts\start-openclaw-vk-stack.ps1 `
@@ -127,10 +174,10 @@ powershell -ExecutionPolicy Bypass -File .\scripts\start-openclaw-vk-stack.ps1 `
 
 Before it launches anything, the starter now checks the selected startup path:
 
-- OpenClaw availability on Windows, then WSL fallback
+- OpenClaw availability (native binary on all platforms)
 - `node` before launching Capability Hub
-- `npx` for `-VkMode npx`
-- the configured source directory and `scripts\dev-windows.ps1` for `-VkMode source`
+- `npx` for npx mode
+- the configured source directory for source mode
 
 If something required is missing, the script fails fast and prints the exact next action instead of continuing partial startup.
 
@@ -138,12 +185,14 @@ If something required is missing, the script fails fast and prints the exact nex
 
 Run the maintained checks from this directory:
 
-```powershell
+```shell
 npm run self-test
 npm run verify:m5:skill
 npm run verify:m5:tool
 npm run verify:m5:e2e
 ```
+
+These commands work on all platforms (macOS, Linux, Windows). The verification scripts are written in Node.js for cross-platform compatibility.
 
 The generated raw verification outputs are local-only and not committed.
 The public repo keeps sanitized selected snapshots in `evidence/`.
@@ -180,7 +229,7 @@ openclaw configure
 
 Then rerun the one-click user-flow command.
 
-### Bootstrap says a Windows tool is missing
+### Bootstrap says a tool is missing
 
 - accept the one-time installation prompt if you want the script to install it for you
 - if you decline, follow the exact command printed by the script and rerun the same command
@@ -188,18 +237,22 @@ Then rerun the one-click user-flow command.
 ### Multiple vibe-kanban project/repository pairs exist
 
 - the user-flow script asks once and saves the answer in `vk-bindings.local.json`
-- rerun with `-Reconfigure` if you want to choose a different saved pair later
+- rerun with `--reconfigure` (bash) or `-Reconfigure` (PowerShell) if you want to choose a different saved pair later
 
 ### Gateway token mismatch
 
 - use the tokenized Control UI URL printed by the scripts
-- or inspect the resolved token inputs with `.\scripts\openclaw-env.ps1`
+- or inspect the resolved token inputs with the env helper script (`openclaw-env.sh` on macOS/Linux, `openclaw-env.ps1` on Windows)
 
 ### Executor injection error
 
-Use comma-delimited executors with `powershell -File` entrypoints:
+Use comma-delimited executors:
 
-```powershell
+```shell
+# bash
+--executors CODEX,CLAUDE_CODE
+
+# PowerShell
 -Executors CODEX,CLAUDE_CODE
 ```
 
@@ -207,8 +260,8 @@ Use comma-delimited executors with `powershell -File` entrypoints:
 
 If the fallback path is slow in your environment, increase the timeout:
 
-```powershell
-node .\scripts\m5-dispatch-client.js --mode dispatch --timeout-ms 300000
+```shell
+node ./scripts/m5-dispatch-client.js --mode dispatch --timeout-ms 300000
 ```
 
 or set `M5_DISPATCH_TIMEOUT_MS`.

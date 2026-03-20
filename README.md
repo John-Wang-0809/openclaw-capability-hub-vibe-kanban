@@ -46,14 +46,29 @@ This repo bootstraps all three components locally so you can go from zero to a w
 ## What you can do with this repo
 
 - bootstrap the local stack without hand-editing first-run config files
-- let the script detect missing prerequisites and install supported Windows tools after one confirmation
+- let the script detect missing prerequisites and install supported tools after one confirmation
 - auto-install or update the managed `/plan2vk` skill in your OpenClaw workspace
 - remember one vibe-kanban project/repository choice for later dispatches
 - open the OpenClaw Control UI and the vibe-kanban dashboard and continue from chat
 
+## Prerequisites
+
+- **Node.js 22+** — the bootstrap script installs it automatically if missing
+- **OpenClaw** — the bootstrap script installs it automatically if missing
+- **jq** (macOS/Linux only) — the bootstrap script installs it automatically if missing
+- **curl** — already included on macOS and Linux
+
 ## First run
 
 Run this command from the repo root:
+
+**macOS / Linux:**
+
+```bash
+bash ./capability-hub/scripts/run-openclaw-user-flow.sh
+```
+
+**Windows (PowerShell):**
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File .\capability-hub\scripts\run-openclaw-user-flow.ps1
@@ -65,7 +80,7 @@ It will:
 
 - check your OpenClaw workspace and local runtime state
 - install Capability Hub dependencies inside `capability-hub\` when needed
-- ask once before installing missing Windows tools such as Node.js LTS or OpenClaw
+- ask once before installing missing tools such as Node.js LTS or OpenClaw
 - install or update the managed `/plan2vk` skill in the detected OpenClaw workspace
 - start or reuse OpenClaw, vibe-kanban, and Capability Hub
 - auto-select the only available vibe-kanban project/repository, or ask once if there are multiple choices
@@ -75,7 +90,7 @@ It will:
 
 The one-click flow is still intended to be low-touch, but it may pause in two cases:
 
-- **Missing Windows tools**: it asks once before attempting to install Node.js LTS or OpenClaw
+- **Missing tools**: it asks once before attempting to install Node.js LTS or OpenClaw
 - **Multiple project/repository choices**: it asks once which vibe-kanban project/repository pair to remember
 
 If there is only one valid project/repository pair, it does not ask and just saves it.
@@ -113,7 +128,15 @@ The end-to-end flow is healthy when:
 
 ## Reconfigure the remembered project or repository
 
-If you want to choose a different vibe-kanban project/repository later, rerun the same command with `-Reconfigure`:
+If you want to choose a different vibe-kanban project/repository later, rerun the same command with the reconfigure flag:
+
+**macOS / Linux:**
+
+```bash
+bash ./capability-hub/scripts/run-openclaw-user-flow.sh --reconfigure
+```
+
+**Windows (PowerShell):**
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File .\capability-hub\scripts\run-openclaw-user-flow.ps1 -Reconfigure
@@ -128,14 +151,14 @@ Common stop points:
 - **OpenClaw is installed but not configured yet**
   The script tells you to run `openclaw configure` once, then rerun the same command.
 
-- **No supported Windows installer is available**
+- **No supported installer is available**
   The script tells you the exact tool that is missing and what to install manually.
 
 - **vibe-kanban has no usable project/repository pair yet**
   Start the stack, create or link a project with at least one repository in vibe-kanban, then rerun the one-click command.
 
 - **Gateway token mismatch / unauthorized**
-  Open the tokenized Control UI URL printed by the script, or inspect the resolved token inputs with `.\capability-hub\scripts\openclaw-env.ps1`.
+  Open the tokenized Control UI URL printed by the script, or inspect the resolved token inputs with the env helper script (`openclaw-env.ps1` on Windows, `openclaw-env.sh` on macOS/Linux).
 
 - **Fallback timeout**
   Increase `M5_DISPATCH_TIMEOUT_MS` or use a larger `--timeout-ms` value when testing the fallback client directly.
@@ -152,6 +175,18 @@ Most users should stay on the one-click flow above.
 
 Use the advanced starter only when you intentionally want to manage startup yourself:
 
+**macOS / Linux:**
+
+```bash
+bash ./capability-hub/scripts/start-openclaw-vk-stack.sh \
+  --vk-mode npx \
+  --vk-api-base-url http://127.0.0.1:3001 \
+  --gateway-url http://127.0.0.1:18789 \
+  --executors CODEX,CLAUDE_CODE
+```
+
+**Windows (PowerShell):**
+
 ```powershell
 powershell -ExecutionPolicy Bypass -File .\capability-hub\scripts\start-openclaw-vk-stack.ps1 `
   -VkMode npx `
@@ -166,13 +201,15 @@ The advanced starter performs fail-fast preflight checks and stack startup, but 
 
 Run the maintained checks from `capability-hub/`:
 
-```powershell
+```shell
 cd capability-hub
 npm run self-test
 npm run verify:m5:skill
 npm run verify:m5:tool
 npm run verify:m5:e2e
 ```
+
+These `npm run` commands work on all platforms (macOS, Linux, Windows).
 
 ## Further reading
 

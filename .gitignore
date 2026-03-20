@@ -37,6 +37,19 @@ capability-hub/scripts/*
 !capability-hub/scripts/stop-openclaw-vk-stack.ps1
 !capability-hub/scripts/verify-m5-dispatch.ps1
 !capability-hub/scripts/vk-inject-mcp.ps1
+!capability-hub/scripts/_utils.sh
+!capability-hub/scripts/resolve-openclaw-config.sh
+!capability-hub/scripts/resolve-openclaw-workspace.sh
+!capability-hub/scripts/start-openclaw-vk-stack.sh
+!capability-hub/scripts/stop-openclaw-vk-stack.sh
+!capability-hub/scripts/vk-inject-mcp.sh
+!capability-hub/scripts/ensure-plan2vk-skill.sh
+!capability-hub/scripts/ensure-vk-bindings.sh
+!capability-hub/scripts/run-openclaw-user-flow.sh
+!capability-hub/scripts/openclaw-env.sh
+!capability-hub/scripts/check-m5-openclaw-contract.mjs
+!capability-hub/scripts/verify-m5-dispatch.mjs
+!capability-hub/scripts/sign-device-auth.cjs
 !capability-hub/evidence/
 !capability-hub/evidence/**
 
